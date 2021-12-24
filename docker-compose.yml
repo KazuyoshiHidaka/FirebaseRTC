@@ -1,0 +1,21 @@
+# Development
+version: '3.4'
+volumes:
+  static_volume:
+  user_config:
+  node_modules:
+
+services:
+  front:
+    build:
+      context: .
+    volumes:
+      - .:/code
+      - node_modules:/code/node_modules
+    ports:
+      # - 3000:3000
+      # - 3001:3001
+      - 5000:5000
+    tty: true
+
+    command: bash

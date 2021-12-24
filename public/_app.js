@@ -37,19 +37,33 @@ async function createRoom() {
 
   registerPeerConnectionListeners();
 
-  // Add code for creating a room here
-  
   // Code for creating room above
-  
+
   localStream.getTracks().forEach(track => {
     peerConnection.addTrack(track, localStream);
   });
 
   // Code for creating a room below
 
+  // Add code for creating a room here
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+
+  const roomWithOffer = {
+    offer: {
+      type: offer.type,
+      sdp: offer.sdp
+    }
+  }
+  const roomRef = await db.collection('rooms').add(roomWithOffer);
+  console.log(roomRef);
+  const roomId = roomRef.id;
+  document.querySelector('#currentRoom').innerText = `Current room is ${roomId} - You are the caller!`
+
   // Code for creating a room above
 
   // Code for collecting ICE candidates below
+  collectIceCandidates(roomRef, peerConnection, 'callerCandidates', 'calleeCandidates')
 
   // Code for collecting ICE candidates above
 
@@ -62,6 +76,15 @@ async function createRoom() {
   });
 
   // Listening for remote session description below
+  roomRef.onSnapshot(async snapshot => {
+    console.log('Got updated room:', snapshot.data());
+    const data = snapshot.data();
+    if (!peerConnection.currentRemoteDescription && data.answer) {
+      console.log('Set remote description: ', data.answer);
+      const answer = new RTCSessionDescription(data.answer)
+      await peerConnection.setRemoteDescription(answer);
+    }
+  });
 
   // Listening for remote session description above
 
@@ -70,18 +93,39 @@ async function createRoom() {
   // Listen for remote ICE candidates above
 }
 
+async function collectIceCandidates(roomRef, peerConnection,
+  localName, remoteName) {
+  const candidatesCollection = roomRef.collection(localName);
+
+  peerConnection.addEventListener('icecandidate', event => {
+    if (event.candidate) {
+      const json = event.candidate.toJSON();
+      candidatesCollection.add(json);
+    }
+  });
+
+  roomRef.collection(remoteName).onSnapshot(snapshot => {
+    snapshot.docChanges().forEach(change => {
+      if (change.type === "added") {
+        const candidate = new RTCIceCandidate(change.doc.data());
+        peerConnection.addIceCandidate(candidate);
+      }
+    });
+  })
+}
+
 function joinRoom() {
   document.querySelector('#createBtn').disabled = true;
   document.querySelector('#joinBtn').disabled = true;
 
   document.querySelector('#confirmJoinBtn').
-      addEventListener('click', async () => {
-        roomId = document.querySelector('#room-id').value;
-        console.log('Join room: ', roomId);
-        document.querySelector(
-            '#currentRoom').innerText = `Current room is ${roomId} - You are the callee!`;
-        await joinRoomById(roomId);
-      }, {once: true});
+    addEventListener('click', async () => {
+      roomId = document.querySelector('#room-id').value;
+      console.log('Join room: ', roomId);
+      document.querySelector(
+        '#currentRoom').innerText = `Current room is ${roomId} - You are the callee!`;
+      await joinRoomById(roomId);
+    }, { once: true });
   roomDialog.open();
 }
 
@@ -100,6 +144,7 @@ async function joinRoomById(roomId) {
     });
 
     // Code for collecting ICE candidates below
+    collectIceCandidates(roomRef, peerConnection, 'calleeCandidates', 'callerCandidates')
 
     // Code for collecting ICE candidates above
 
@@ -112,6 +157,18 @@ async function joinRoomById(roomId) {
     });
 
     // Code for creating SDP answer below
+    const offer = roomSnapshot.data().offer;
+    await peerConnection.setRemoteDescription(offer);
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+
+    const roomWithAnswer = {
+      answer: {
+        type: answer.type,
+        sdp: answer.sdp
+      }
+    }
+    await roomRef.update(roomWithAnswer);
 
     // Code for creating SDP answer above
 
@@ -122,8 +179,18 @@ async function joinRoomById(roomId) {
 }
 
 async function openUserMedia(e) {
-  const stream = await navigator.mediaDevices.getUserMedia(
-      {video: true, audio: true});
+  let stream;
+  try {
+    /* ストリームを使用 */
+    stream = await navigator.mediaDevices.getUserMedia(
+      {
+        video: true,
+        audio: true
+      });
+  } catch (err) {
+    /* エラーを処理 */
+    console.log(err)
+  }
   document.querySelector('#localVideo').srcObject = stream;
   localStream = stream;
   remoteStream = new MediaStream();
@@ -179,7 +246,7 @@ async function hangUp(e) {
 function registerPeerConnectionListeners() {
   peerConnection.addEventListener('icegatheringstatechange', () => {
     console.log(
-        `ICE gathering state changed: ${peerConnection.iceGatheringState}`);
+      `ICE gathering state changed: ${peerConnection.iceGatheringState}`);
   });
 
   peerConnection.addEventListener('connectionstatechange', () => {
@@ -192,7 +259,7 @@ function registerPeerConnectionListeners() {
 
   peerConnection.addEventListener('iceconnectionstatechange ', () => {
     console.log(
-        `ICE connection state change: ${peerConnection.iceConnectionState}`);
+      `ICE connection state change: ${peerConnection.iceConnectionState}`);
   });
 }
 

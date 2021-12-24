@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "dev": "firebase serve --only hosting --host 0.0.0.0 --port 5000"
+  },
+  "dependencies": {
+    "firebase": "^9.6.1",
+    "firebase-tools": "^9.23.1",
+    "kalidokit": "^1.1.2",
+    "typescript": "^4.5.3"
+  }
+}
